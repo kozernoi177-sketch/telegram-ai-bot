@@ -17,12 +17,19 @@ def handle_message(message):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "openai/gpt-3.5-turbo-1106",
+                "model": "mistralai/mistral-7b-instruct",
                 "messages": [
-                    {"role": "system", "content": "Отвечай всегда на русском языке."},
-                    {"role": "user", "content": message.text}
+                    {
+                        "role": "system",
+                        "content": "Ты Telegram-бот. Отвечай всегда только на русском языке."
+                    },
+                    {
+                        "role": "user",
+                        "content": message.text
+                    }
                 ]
-            }
+            },
+            timeout=30
         )
 
         result = response.json()
