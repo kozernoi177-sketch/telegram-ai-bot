@@ -17,8 +17,9 @@ def handle_message(message):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "openai/gpt-3.5-turbo",
+                "model": "openai/gpt-3.5-turbo-1106",
                 "messages": [
+                    {"role": "system", "content": "Отвечай всегда на русском языке."},
                     {"role": "user", "content": message.text}
                 ]
             }
@@ -29,12 +30,11 @@ def handle_message(message):
         if "choices" in result:
             answer = result["choices"][0]["message"]["content"]
         else:
-            answer = f"API Error: {result}"
+            answer = f"Ошибка API: {result}"
 
     except Exception as e:
-        answer = f"Bot crashed: {e}"
+        answer = f"Ошибка бота: {e}"
 
     bot.reply_to(message, answer)
 
-print("BOT STARTING...")
 bot.infinity_polling(skip_pending=True)
