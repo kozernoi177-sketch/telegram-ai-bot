@@ -1,5 +1,7 @@
-import os
+print("BOT STARTED")
 
-if os.path.exists("med_bot.db"):
-    os.remove("med_bot.db")
-    print("База удалена")
+while True:
+    try:
+        bot.infinity_polling(skip_pending=True)
+    except Exception as e:
+        print("CRASH:", e)
