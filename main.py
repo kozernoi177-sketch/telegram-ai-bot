@@ -7,8 +7,11 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-API_URL = "https://api-inference.huggingface.co/models/google/flan-t5-large"
-headers = {"Authorization": f"Bearer {HF_TOKEN}"}
+API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-large"
+headers = {
+    "Authorization": f"Bearer {HF_TOKEN}",
+    "Content-Type": "application/json"
+}
 
 @bot.message_handler(func=lambda message: True)
 def handle_message(message):
