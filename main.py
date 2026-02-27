@@ -22,8 +22,12 @@ def handle_message(message):
             ]
         }
     )
-
     result = response.json()
+
+if "choices" in result:
     answer = result["choices"][0]["message"]["content"]
-    bot.reply_to(message, answer)
-bot.infinity_polling()
+else:
+    answer = f"API Error: {result}"
+
+bot.reply_to(message, answer)
+    
