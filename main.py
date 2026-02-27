@@ -7,33 +7,37 @@ import time
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 
 if not BOT_TOKEN:
-    raise Exception("BOT_TOKEN не найден в Environment Variables")
+    raise Exception("Добавь BOT_TOKEN в Secrets")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
 users = {}
-duel_queue = []
-active_duels = {}
+duel_waiting = []
+duels = {}
 
-# ======================================================
-# КАРТИНКИ (СТАБИЛЬНЫЕ)
-# ======================================================
+# =====================================================
+# МЕДИЦИНСКИЕ КАРТИНКИ (СТАБИЛЬНЫЕ JPG)
+# =====================================================
 
-medical_images = [
-    "https://picsum.photos/400/300",
-    "https://picsum.photos/401/300",
-    "https://picsum.photos/402/300",
-]
+medical_images = {
+    "quiz": [
+        "https://upload.wikimedia.org/wikipedia/commons/8/8c/Hand_washing.jpg",
+        "https://upload.wikimedia.org/wikipedia/commons/3/3f/Medical_syringe.jpg",
+    ],
+    "injection": [
+        "https://upload.wikimedia.org/wikipedia/commons/3/3f/Medical_syringe.jpg",
+    ]
+}
 
-def send_random_image(chat_id):
+def send_image(chat_id, category):
     try:
-        bot.send_photo(chat_id, random.choice(medical_images))
+        bot.send_photo(chat_id, random.choice(medical_images[category]))
     except:
         pass
 
-# ======================================================
-# БАЗЫ ВОПРОСОВ
-# ======================================================
+# =====================================================
+# ВОПРОСЫ
+# =====================================================
 
 quiz_base = [
     ("Сколько камер в сердце?", "4"),
@@ -41,29 +45,23 @@ quiz_base = [
     ("Можно ли использовать нестерильные инструменты?", "нет"),
 ]
 
-injection_templates = [
+injection_base = [
     "Может ли нарушение стерильности привести к инфекции?",
-    "Может ли неправильная техника вызвать осложнение?",
     "Является ли соблюдение асептики обязательным?",
+    "Может ли неправильная техника вызвать осложнение?"
 ]
 
-# ======================================================
-# ГЕНЕРАЦИЯ
-# ======================================================
+duel_base = []
+for i in range(50):
+    duel_base.extend([
+        ("Сколько камер в сердце?", "4"),
+        ("Сколько лёгких у человека?", "2"),
+        ("Можно ли использовать нестерильные инструменты?", "нет"),
+    ])
 
-def generate_quiz():
-    return random.sample(quiz_base, len(quiz_base))
-
-def generate_injection():
-    questions = []
-    for i in range(40):
-        for q in injection_templates:
-            questions.append((q, random.choice(["да", "нет"])))
-    return random.sample(questions, len(questions))
-
-# ======================================================
+# =====================================================
 # МЕНЮ
-# ======================================================
+# =====================================================
 
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -72,119 +70,132 @@ def main_menu():
     markup.add("🥊 1 на 1")
     return markup
 
-# ======================================================
+# =====================================================
 # START
-# ======================================================
+# =====================================================
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
-
     users[user_id] = {
-        "quiz": generate_quiz(),
-        "injection": [],
-        "points": 0
+        "points": 0,
+        "mode": None
     }
-
     bot.send_message(message.chat.id, "Выберите режим:", reply_markup=main_menu())
 
-# ======================================================
+# =====================================================
 # ТАЙМЕР
-# ======================================================
+# =====================================================
 
 def start_timer(user_id):
-    users[user_id]["question_time"] = time.time()
+    users[user_id]["start_time"] = time.time()
 
-def is_timeout(user_id):
-    if "question_time" in users[user_id]:
-        return time.time() - users[user_id]["question_time"] > 30
+def timeout(user_id):
+    if "start_time" in users[user_id]:
+        return time.time() - users[user_id]["start_time"] > 30
     return False
 
-# ======================================================
+# =====================================================
 # ВИКТОРИНА
-# ======================================================
+# =====================================================
 
 @bot.message_handler(func=lambda m: m.text == "🎮 Викторина")
 def quiz_start(message):
     user_id = message.from_user.id
+    users[user_id]["mode"] = "quiz"
 
-    if user_id not in users:
-        start(message)
-        return
-
-    if not users[user_id]["quiz"]:
-        users[user_id]["quiz"] = generate_quiz()
-
-    q, a = users[user_id]["quiz"].pop()
-    users[user_id]["current_answer"] = a
+    q, a = random.choice(quiz_base)
+    users[user_id]["answer"] = a
     start_timer(user_id)
 
     bot.send_message(message.chat.id, f"⏳ 30 секунд\n{q}")
 
-# ======================================================
+# =====================================================
 # ИНЪЕКЦИИ
-# ======================================================
+# =====================================================
 
 @bot.message_handler(func=lambda m: m.text == "💉 Инъекции (для М)")
 def injection_start(message):
     user_id = message.from_user.id
+    users[user_id]["mode"] = "injection"
 
-    if user_id not in users:
-        start(message)
-        return
+    q = random.choice(injection_base)
+    a = random.choice(["да", "нет"])
 
-    users[user_id]["injection"] = generate_injection()
-
-    send_injection(message.chat.id, user_id)
-
-def send_injection(chat_id, user_id):
-    if not users[user_id]["injection"]:
-        users[user_id]["injection"] = generate_injection()
-
-    q, a = users[user_id]["injection"].pop()
-    users[user_id]["current_injection"] = a
+    users[user_id]["answer"] = a
     start_timer(user_id)
 
-    bot.send_message(chat_id, f"💉 ⏳ 30 секунд\n{q}\nОтветьте: да или нет")
+    bot.send_message(message.chat.id, f"💉 ⏳ 30 секунд\n{q}\nОтветьте: да или нет")
 
-# ======================================================
+# =====================================================
 # ДУЭЛЬ 1 НА 1
-# ======================================================
+# =====================================================
 
 @bot.message_handler(func=lambda m: m.text == "🥊 1 на 1")
 def duel_start(message):
     user_id = message.from_user.id
 
-    if user_id not in users:
-        start(message)
-        return
+    if duel_waiting:
+        opponent = duel_waiting.pop()
 
-    if duel_queue:
-        opponent = duel_queue.pop()
-        active_duels[user_id] = opponent
-        active_duels[opponent] = user_id
+        duels[user_id] = {
+            "opponent": opponent,
+            "score": 0,
+            "round": 0,
+            "questions": random.sample(duel_base, 10)
+        }
+
+        duels[opponent] = {
+            "opponent": user_id,
+            "score": 0,
+            "round": 0,
+            "questions": duels[user_id]["questions"]
+        }
 
         bot.send_message(user_id, "Соперник найден!")
         bot.send_message(opponent, "Соперник найден!")
 
         send_duel_question(user_id)
         send_duel_question(opponent)
+
     else:
-        duel_queue.append(user_id)
+        duel_waiting.append(user_id)
         bot.send_message(user_id, "Ожидание соперника...")
 
 def send_duel_question(user_id):
-    q, a = random.choice(quiz_base)
-    users[user_id]["duel_answer"] = a
+    duel = duels[user_id]
+
+    if duel["round"] >= 10:
+        end_duel(user_id)
+        return
+
+    q, a = duel["questions"][duel["round"]]
+    users[user_id]["answer"] = a
+    users[user_id]["mode"] = "duel"
+
+    duel["round"] += 1
     start_timer(user_id)
 
-    bot.send_message(user_id, f"🥊 ⏳ 30 секунд\n{q}")
+    bot.send_message(user_id, f"🥊 Раунд {duel['round']}/10\n⏳ 30 секунд\n{q}")
 
-# ======================================================
+def end_duel(user_id):
+    duel = duels[user_id]
+    opponent = duel["opponent"]
+
+    score1 = duel["score"]
+    score2 = duels[opponent]["score"]
+
+    bot.send_message(user_id, f"Дуэль завершена.\nВаш счёт: {score1}")
+    bot.send_message(opponent, f"Дуэль завершена.\nВаш счёт: {score2}")
+
+    del duels[user_id]
+    del duels[opponent]
+
+# =====================================================
 # ОБЩИЙ ОБРАБОТЧИК
-# ======================================================
+# =====================================================
 
-@bot.message_handler(func=lambda message: True)
+@bot.message_handler(func=lambda m: True)
 def handle(message):
     user_id = message.from_user.id
     text = message.text.lower()
@@ -193,70 +204,30 @@ def handle(message):
         start(message)
         return
 
-    # === ТАЙМАУТ ===
-    if is_timeout(user_id):
-
-        if "current_answer" in users[user_id]:
-            correct = users[user_id]["current_answer"]
-            bot.send_message(message.chat.id, f"⏳ Время вышло.\nОтвет: {correct}")
-            send_random_image(message.chat.id)
-            del users[user_id]["current_answer"]
-            return
-
-        if "current_injection" in users[user_id]:
-            correct = users[user_id]["current_injection"]
-            bot.send_message(message.chat.id, f"⏳ Время вышло.\nОтвет: {correct}")
-            send_random_image(message.chat.id)
-            del users[user_id]["current_injection"]
-            return
-
-        if "duel_answer" in users[user_id]:
-            correct = users[user_id]["duel_answer"]
-            bot.send_message(message.chat.id, f"⏳ Время вышло.\nОтвет: {correct}")
-            send_random_image(message.chat.id)
-            del users[user_id]["duel_answer"]
-            return
-
-    # === ИНЪЕКЦИИ ===
-    if "current_injection" in users[user_id]:
-        correct = users[user_id]["current_injection"]
-
-        if text == correct:
-            bot.send_message(message.chat.id, "Умница.")
-        else:
-            bot.send_message(message.chat.id, f"Неправильно.\nОтвет: {correct}")
-
-        send_random_image(message.chat.id)
-        del users[user_id]["current_injection"]
-        send_injection(message.chat.id, user_id)
+    if "answer" not in users[user_id]:
         return
 
-    # === ВИКТОРИНА ===
-    if "current_answer" in users[user_id]:
-        correct = users[user_id]["current_answer"]
+    correct = users[user_id]["answer"]
 
-        if text == correct:
-            bot.send_message(message.chat.id, "Правильно!")
-        else:
-            bot.send_message(message.chat.id, f"Неправильно.\nОтвет: {correct}")
-
-        send_random_image(message.chat.id)
-        del users[user_id]["current_answer"]
+    if timeout(user_id):
+        bot.send_message(message.chat.id, f"⏳ Время вышло.\nОтвет: {correct}")
+        send_image(message.chat.id, "quiz")
         return
 
-    # === ДУЭЛЬ ===
-    if "duel_answer" in users[user_id]:
-        correct = users[user_id]["duel_answer"]
+    if text == correct:
+        bot.send_message(message.chat.id, "Правильно!")
+        if users[user_id]["mode"] == "duel":
+            duels[user_id]["score"] += 1
+    else:
+        bot.send_message(message.chat.id, f"Неправильно.\nОтвет: {correct}")
 
-        if text == correct:
-            bot.send_message(message.chat.id, "Очко засчитано!")
-        else:
-            bot.send_message(message.chat.id, f"Неправильно.\nОтвет: {correct}")
+    if users[user_id]["mode"] == "quiz":
+        send_image(message.chat.id, "quiz")
 
-        send_random_image(message.chat.id)
-        del users[user_id]["duel_answer"]
-        return
+    if users[user_id]["mode"] == "injection":
+        send_image(message.chat.id, "injection")
 
-    bot.send_message(message.chat.id, "Выберите режим:", reply_markup=main_menu())
+    if users[user_id]["mode"] == "duel":
+        send_duel_question(user_id)
 
 bot.infinity_polling(skip_pending=True)
