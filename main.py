@@ -8,8 +8,9 @@ BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 users = {}
-duel_waiting = []
-duels = {}
+username_to_id = {}
+pending_invites = {}
+active_duels = {}
 
 difficulty_settings = {
     "Лёгкий": {"time": 30, "multiplier": 1},
@@ -17,16 +18,9 @@ difficulty_settings = {
     "Сложный": {"time": 15, "multiplier": 2}
 }
 
-positive_reactions = [
-    "🔥 Отлично!",
-    "💉 Профессионально!",
-    "👏 Молодец!",
-    "🏆 Так держать!"
-]
-
-# ========================
-# БАЗЫ ВОПРОСОВ
-# ========================
+# =======================
+# ВОПРОСЫ
+# =======================
 
 quiz_questions = [
     ("Сколько камер в сердце?", "4"),
@@ -39,7 +33,6 @@ injection_questions = [
     ("Можно ли использовать нестерильный шприц?", "нет"),
     ("Может ли неправильная техника вызвать осложнение?", "да"),
     ("Является ли соблюдение асептики обязательным?", "да"),
-    ("Может ли воздух в шприце вызвать эмболию?", "да"),
 ]
 
 for i in range(1, 151):
@@ -47,33 +40,28 @@ for i in range(1, 151):
         (f"Может ли нарушение правил инъекции привести к осложнению ({i})?", "да")
     )
 
-# ========================
-# СИСТЕМА
-# ========================
+# =======================
+# ИНИЦИАЛИЗАЦИЯ
+# =======================
 
-def init_user(user_id):
+def init_user(user_id, username):
     users[user_id] = {
+        "name": None,
+        "username": username,
         "points": 0,
         "total": 0,
         "correct": 0,
-        "streak": 0,
         "difficulty": "Лёгкий",
         "mode": None,
         "used_quiz": [],
         "used_injection": [],
         "answer": None,
-        "question_time": None
+        "question_time": None,
+        "duel_score": 0,
+        "duel_round": 0
     }
-
-def get_league(points):
-    if points < 50:
-        return "🥉 Новичок"
-    elif points < 150:
-        return "🥈 Ассистент"
-    elif points < 300:
-        return "🥇 Специалист"
-    else:
-        return "👑 MASTER"
+    if username:
+        username_to_id[username] = user_id
 
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
@@ -82,15 +70,29 @@ def main_menu():
     markup.add("📊 Профиль", "🎚 Сложность", "⛔ Стоп")
     return markup
 
+# =======================
+# START
+# =======================
+
+@bot.message_handler(commands=['start'])
+def start(message):
+    init_user(message.from_user.id, message.from_user.username)
+    bot.send_message(message.chat.id, "Введите своё имя:")
+
+@bot.message_handler(func=lambda m: m.from_user.id in users and users[m.from_user.id]["name"] is None)
+def set_name(message):
+    users[message.from_user.id]["name"] = message.text
+    bot.send_message(message.chat.id, f"Привет, {message.text}!", reply_markup=main_menu())
+
+# =======================
+# ВИКТОРИНА / ИНЪЕКЦИИ
+# =======================
+
 def ask_question(chat_id, mode):
     user = users[chat_id]
 
-    if mode == "quiz":
-        pool = quiz_questions
-        used = user["used_quiz"]
-    else:
-        pool = injection_questions
-        used = user["used_injection"]
+    pool = quiz_questions if mode == "quiz" else injection_questions
+    used = user["used_quiz"] if mode == "quiz" else user["used_injection"]
 
     available = [q for q in pool if q not in used]
     if not available:
@@ -109,68 +111,109 @@ def ask_question(chat_id, mode):
     else:
         bot.send_message(chat_id, question[0])
 
-# ========================
-# КОМАНДЫ
-# ========================
-
-@bot.message_handler(commands=['start'])
-def start(message):
-    init_user(message.from_user.id)
-    bot.send_message(message.chat.id, "Выберите режим:", reply_markup=main_menu())
-
 @bot.message_handler(func=lambda m: m.text == "🎮 Викторина")
 def quiz(message):
-    if message.from_user.id not in users:
-        init_user(message.from_user.id)
     ask_question(message.chat.id, "quiz")
 
 @bot.message_handler(func=lambda m: m.text == "💉 Инъекции")
 def injection(message):
-    if message.from_user.id not in users:
-        init_user(message.from_user.id)
     ask_question(message.chat.id, "injection")
+
+# =======================
+# 1 НА 1
+# =======================
+
+@bot.message_handler(func=lambda m: m.text == "🥊 1 на 1")
+def duel_request(message):
+    bot.send_message(message.chat.id, "Введите @username соперника:")
+
+@bot.message_handler(func=lambda m: m.text.startswith("@"))
+def send_invite(message):
+    inviter_id = message.from_user.id
+    username = message.text.replace("@", "")
+
+    if username not in username_to_id:
+        bot.send_message(inviter_id, "Пользователь не найден или не запускал бота.")
+        return
+
+    opponent_id = username_to_id[username]
+
+    pending_invites[opponent_id] = inviter_id
+
+    bot.send_message(inviter_id, "Приглашение отправлено.")
+    bot.send_message(opponent_id, f"{users[inviter_id]['name']} вызывает вас на дуэль!\nНапишите: принять")
+
+@bot.message_handler(func=lambda m: m.text.lower() == "принять")
+def accept_duel(message):
+    opponent_id = message.from_user.id
+
+    if opponent_id not in pending_invites:
+        return
+
+    inviter_id = pending_invites.pop(opponent_id)
+
+    active_duels[inviter_id] = opponent_id
+    active_duels[opponent_id] = inviter_id
+
+    users[inviter_id]["duel_score"] = 0
+    users[opponent_id]["duel_score"] = 0
+    users[inviter_id]["duel_round"] = 0
+    users[opponent_id]["duel_round"] = 0
+
+    bot.send_message(inviter_id, "Дуэль началась! 10 раундов.")
+    bot.send_message(opponent_id, "Дуэль началась! 10 раундов.")
+
+    start_duel_round(inviter_id)
+    start_duel_round(opponent_id)
+
+def start_duel_round(user_id):
+    if users[user_id]["duel_round"] >= 10:
+        finish_duel(user_id)
+        return
+
+    question = random.choice(quiz_questions)
+
+    users[user_id]["answer"] = question[1]
+    users[user_id]["mode"] = "duel"
+    users[user_id]["question_time"] = time.time()
+    users[user_id]["duel_round"] += 1
+
+    bot.send_message(user_id, f"Раунд {users[user_id]['duel_round']}/10\n{question[0]}")
+
+def finish_duel(user_id):
+    opponent_id = active_duels.get(user_id)
+    if not opponent_id:
+        return
+
+    score1 = users[user_id]["duel_score"]
+    score2 = users[opponent_id]["duel_score"]
+
+    if score1 > score2:
+        bot.send_message(user_id, "🏆 Вы победили!")
+        bot.send_message(opponent_id, "❌ Вы проиграли.")
+    elif score2 > score1:
+        bot.send_message(opponent_id, "🏆 Вы победили!")
+        bot.send_message(user_id, "❌ Вы проиграли.")
+    else:
+        bot.send_message(user_id, "🤝 Ничья!")
+        bot.send_message(opponent_id, "🤝 Ничья!")
+
+    active_duels.pop(user_id, None)
+    active_duels.pop(opponent_id, None)
+
+# =======================
+# СТОП
+# =======================
 
 @bot.message_handler(func=lambda m: m.text == "⛔ Стоп")
 def stop(message):
-    users[message.from_user.id]["answer"] = None
     users[message.from_user.id]["mode"] = None
-    bot.send_message(message.chat.id, "Режим остановлен.", reply_markup=main_menu())
+    users[message.from_user.id]["answer"] = None
+    bot.send_message(message.chat.id, "Режим остановлен.")
 
-@bot.message_handler(func=lambda m: m.text == "📊 Профиль")
-def profile(message):
-    user = users.get(message.from_user.id)
-    if not user:
-        init_user(message.from_user.id)
-        user = users[message.from_user.id]
-
-    accuracy = 0
-    if user["total"] > 0:
-        accuracy = round(user["correct"] / user["total"] * 100)
-
-    bot.send_message(
-        message.chat.id,
-        f"Очки: {user['points']}\n"
-        f"Лига: {get_league(user['points'])}\n"
-        f"Ответов: {user['total']}\n"
-        f"Правильных: {user['correct']}\n"
-        f"Серия: {user['streak']}\n"
-        f"Точность: {accuracy}%"
-    )
-
-@bot.message_handler(func=lambda m: m.text == "🎚 Сложность")
-def difficulty_menu(message):
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Лёгкий", "Средний", "Сложный")
-    bot.send_message(message.chat.id, "Выберите:", reply_markup=markup)
-
-@bot.message_handler(func=lambda m: m.text in difficulty_settings)
-def set_difficulty(message):
-    users[message.from_user.id]["difficulty"] = message.text
-    bot.send_message(message.chat.id, "Сложность изменена", reply_markup=main_menu())
-
-# ========================
+# =======================
 # ОТВЕТЫ
-# ========================
+# =======================
 
 @bot.message_handler(func=lambda m: True)
 def handle_answer(message):
@@ -182,28 +225,25 @@ def handle_answer(message):
     if not user["answer"]:
         return
 
-    time_limit = difficulty_settings[user["difficulty"]]["time"]
-
-    if time.time() - user["question_time"] > time_limit:
+    if time.time() - user["question_time"] > difficulty_settings[user["difficulty"]]["time"]:
         bot.send_message(message.chat.id, f"⏳ Время вышло!\nОтвет: {user['answer']}")
-        user["streak"] = 0
         user["answer"] = None
-        ask_question(message.chat.id, user["mode"])
         return
 
-    user["total"] += 1
-
     if message.text.lower() == user["answer"]:
-        user["correct"] += 1
-        user["streak"] += 1
-        points = int(10 * difficulty_settings[user["difficulty"]]["multiplier"])
-        user["points"] += points
-        bot.send_message(message.chat.id, random.choice(positive_reactions) + f" +{points} очков")
+        bot.send_message(message.chat.id, "🔥 Верно!")
+        if user["mode"] == "duel":
+            user["duel_score"] += 1
     else:
-        user["streak"] = 0
         bot.send_message(message.chat.id, f"❌ Неверно.\nОтвет: {user['answer']}")
 
     user["answer"] = None
-    ask_question(message.chat.id, user["mode"])
+
+    if user["mode"] == "duel":
+        start_duel_round(user_id)
+    elif user["mode"] == "quiz":
+        ask_question(message.chat.id, "quiz")
+    elif user["mode"] == "injection":
+        ask_question(message.chat.id, "injection")
 
 bot.infinity_polling(skip_pending=True)
