@@ -37,49 +37,30 @@ CREATE TABLE IF NOT EXISTS exam_history (
 
 conn.commit()
 
-# ================= QUESTIONS =================
+# ================= SEED =================
 
 def seed():
     cursor.execute("SELECT COUNT(*) FROM questions")
     if cursor.fetchone()[0] > 0:
         return
 
-    questions_data = [
-        ("Анатомия",
-         "Сколько камер у сердца?",
-         "2","3","4","5",
-         "C",
-         "У сердца 2 предсердия и 2 желудочка."),
-
-        ("Анатомия",
-         "Сколько костей у взрослого человека?",
-         "206","208","210","212",
-         "A",
+    data = [
+        ("Анатомия","Сколько камер у сердца?","2","3","4","5","C",
+         "2 предсердия и 2 желудочка."),
+        ("Анатомия","Сколько костей у взрослого человека?","206","208","210","212","A",
          "У взрослого человека 206 костей."),
-
-        ("Инъекции",
-         "Под каким углом выполняется внутримышечная инъекция?",
-         "30°","45°","90°","120°",
-         "C",
-         "Внутримышечная инъекция выполняется под 90°."),
-
-        ("Первая помощь",
-         "Что делать при артериальном кровотечении?",
-         "Наложить жгут","Дать воду","Массировать","Ничего",
-         "A",
+        ("Инъекции","Под каким углом делают внутримышечную инъекцию?","30°","45°","90°","120°","C",
+         "Внутримышечно вводят под углом 90°."),
+        ("Первая помощь","Что делать при артериальном кровотечении?","Жгут","Вода","Массаж","Ничего","A",
          "Жгут накладывается выше раны."),
-
-        ("Фармакология",
-         "Антибиотики действуют против:",
-         "Вирусов","Бактерий","Грибов","Аллергии",
-         "B",
+        ("Фармакология","Антибиотики действуют против:","Вирусов","Бактерий","Грибов","Аллергии","B",
          "Антибиотики действуют на бактерии.")
     ]
 
     cursor.executemany("""
     INSERT INTO questions(category,question,a,b,c,d,correct,explanation)
     VALUES (?,?,?,?,?,?,?,?)
-    """, questions_data)
+    """, data)
 
     conn.commit()
 
@@ -150,7 +131,8 @@ def category(message):
         """,(message.text,user_id))
 
         pool=cursor.fetchall()
-        if len(pool)<1:
+
+        if len(pool)==0:
             bot.send_message(user_id,"Вопросы закончились.")
             return
 
@@ -158,7 +140,7 @@ def category(message):
         session["category"]=message.text
         ask_exam(user_id)
 
-# ================= ASK QUESTION =================
+# ================= QUESTION =================
 
 def send_question(user_id,q):
     markup=types.InlineKeyboardMarkup()
@@ -169,26 +151,29 @@ def send_question(user_id,q):
         types.InlineKeyboardButton("D",callback_data="D")
     )
 
-    bot.send_message(user_id,
-                     f"{q[2]}\n\nA) {q[3]}\nB) {q[4]}\nC) {q[5]}\nD) {q[6]}",
-                     reply_markup=markup)
+    bot.send_message(
+        user_id,
+        f"{q[2]}\n\nA) {q[3]}\nB) {q[4]}\nC) {q[5]}\nD) {q[6]}",
+        reply_markup=markup
+    )
 
-    # таймер 30 секунд
     timer=threading.Timer(30,timeout,args=(user_id,))
     sessions[user_id]["timer"]=timer
     timer.start()
 
 def timeout(user_id):
     session=sessions.get(user_id)
-    if not session or "current" not in session:
+    if not session or session.get("answered"):
         return
+
+    session["answered"]=True
     bot.send_message(user_id,f"⏰ Время вышло.\nПравильный ответ: {session['current'][7]}")
     next_step(user_id)
 
 def ask_random(user_id,category):
     cursor.execute("SELECT * FROM questions WHERE category=? ORDER BY RANDOM() LIMIT 1",(category,))
     q=cursor.fetchone()
-    sessions[user_id]={"mode":"training","current":q,"category":category}
+    sessions[user_id]={"mode":"training","current":q,"category":category,"answered":False}
     send_question(user_id,q)
 
 def ask_exam(user_id):
@@ -203,26 +188,38 @@ def ask_exam(user_id):
     q=session["questions"][session["count"]]
     session["current"]=q
     session["count"]+=1
+    session["answered"]=False
     send_question(user_id,q)
 
-# ================= ANSWERS =================
+# ================= ANSWER =================
 
 @bot.callback_query_handler(func=lambda call: True)
 def handle_answer(call):
     user_id=call.message.chat.id
     session=sessions.get(user_id)
-    if not session:
+
+    if not session or session.get("answered"):
         return
+
+    session["answered"]=True
+
+    # убираем кнопки
+    bot.edit_message_reply_markup(
+        chat_id=user_id,
+        message_id=call.message.message_id,
+        reply_markup=None
+    )
 
     session["timer"].cancel()
 
-    if call.data==session["current"][7]:
+    correct=session["current"][7]
+
+    if call.data==correct:
         bot.send_message(user_id,"✅ Верно!")
         if session["mode"]=="exam":
             session["score"]+=1
     else:
-        bot.send_message(user_id,
-                         f"❌ Неверно.\nПравильный ответ: {session['current'][7]}")
+        bot.send_message(user_id,f"❌ Неверно.\nПравильный ответ: {correct}")
 
     bot.send_message(user_id,f"📖 {session['current'][8]}")
 
@@ -243,4 +240,10 @@ def next_step(user_id):
     elif session["mode"]=="exam":
         ask_exam(user_id)
 
-bot.infinity_polling(skip_pending=True)
+print("BOT STARTED")
+
+while True:
+    try:
+        bot.infinity_polling(skip_pending=True)
+    except Exception as e:
+        print("CRASH:", e)
