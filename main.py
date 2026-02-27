@@ -7,7 +7,8 @@ HF_TOKEN = os.environ.get("HF_TOKEN")
 
 bot = telebot.TeleBot(BOT_TOKEN)
 
-API_URL = "https://router.huggingface.co/hf-inference/models/google/flan-t5-large"
+API_URL = "https://router.huggingface.co/hf-inference/models/HuggingFaceH4/zephyr-7b-beta"
+
 headers = {
     "Authorization": f"Bearer {HF_TOKEN}",
     "Content-Type": "application/json"
@@ -17,16 +18,16 @@ headers = {
 def handle_message(message):
     try:
         payload = {
-            "inputs": "Ответь на русском языке: " + message.text
+            "inputs": f"<|system|>\nОтвечай всегда на русском языке.\n<|user|>\n{message.text}\n<|assistant|>"
         }
 
         response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
-        result = response.json()
 
-        if isinstance(result, list):
-            answer = result[0]["generated_text"]
+        if response.status_code != 200:
+            answer = f"Ошибка API: {response.text}"
         else:
-            answer = str(result)
+            result = response.json()
+            answer = result[0]["generated_text"]
 
     except Exception as e:
         answer = f"Ошибка: {e}"
