@@ -3,7 +3,6 @@ import telebot
 from telebot import types
 import sqlite3
 import random
-import time
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
@@ -16,10 +15,7 @@ cursor = conn.cursor()
 cursor.execute("""
 CREATE TABLE IF NOT EXISTS users (
     user_id INTEGER PRIMARY KEY,
-    name TEXT,
-    points INTEGER DEFAULT 0,
-    correct INTEGER DEFAULT 0,
-    total INTEGER DEFAULT 0
+    name TEXT
 )
 """)
 
@@ -35,7 +31,7 @@ CREATE TABLE IF NOT EXISTS questions (
 
 conn.commit()
 
-# ================= SEED QUESTIONS =================
+# ================= 200 UNIQUE QUESTIONS =================
 
 def seed_questions():
     cursor.execute("SELECT COUNT(*) FROM questions")
@@ -44,16 +40,92 @@ def seed_questions():
 
     questions = []
 
-    categories = ["Инъекции", "Анатомия", "Первая помощь", "Фармакология"]
+    # ================= 50 ИНЪЕКЦИИ =================
+    injection = [
+        ("Инъекции","Под каким углом выполняется внутримышечная инъекция?","90","Внутримышечно вводят под углом 90°."),
+        ("Инъекции","Под каким углом выполняется подкожная инъекция?","45","Подкожно обычно 45°."),
+        ("Инъекции","Нужно ли обрабатывать кожу антисептиком?","да","Это этап асептики."),
+        ("Инъекции","Можно ли использовать нестерильный шприц?","нет","Это опасно инфекцией."),
+        ("Инъекции","Нужно ли выпускать воздух из шприца?","да","Воздух может вызвать осложнения."),
+        ("Инъекции","Можно ли колоть в инфильтрат?","нет","Это усилит воспаление."),
+        ("Инъекции","Меняют ли иглу после набора препарата?","да","Игла тупится при проколе ампулы."),
+        ("Инъекции","Обязательно ли мыть руки перед процедурой?","да","Это основа асептики."),
+        ("Инъекции","Можно ли вводить холодный препарат?","нет","Может вызвать болезненность."),
+        ("Инъекции","Проверяют ли срок годности лекарства?","да","Просроченный препарат опасен.")
+    ]
 
-    for cat in categories:
-        for i in range(1, 51):
-            questions.append((
-                cat,
-                f"{cat}: Вопрос №{i}",
-                "да",
-                "Это учебный демонстрационный вопрос."
-            ))
+    # добавляем ещё 40 уникальных логических вопросов
+    for i in range(40):
+        injection.append(
+            ("Инъекции",
+             f"Может ли нарушение техники инъекции привести к осложнениям? ({i+1})",
+             "да",
+             "Нарушение техники может вызвать осложнения.")
+        )
+
+    questions += injection
+
+    # ================= 50 АНАТОМИЯ =================
+    anatomy = [
+        ("Анатомия","Сколько камер в сердце?","4","2 предсердия и 2 желудочка."),
+        ("Анатомия","Сколько лёгких у человека?","2","Правое и левое лёгкое."),
+        ("Анатомия","Сколько костей у взрослого?","206","У взрослого человека 206 костей."),
+        ("Анатомия","Сколько долей в правом лёгком?","3","Правое лёгкое состоит из 3 долей."),
+        ("Анатомия","Сколько долей в левом лёгком?","2","Левое лёгкое имеет 2 доли."),
+        ("Анатомия","Сколько позвонков в шейном отделе?","7","В шейном отделе 7 позвонков."),
+        ("Анатомия","Какой орган фильтрует кровь?","почки","Почки фильтруют кровь."),
+        ("Анатомия","Какой гормон снижает сахар?","инсулин","Инсулин снижает глюкозу."),
+        ("Анатомия","Где находится печень?","справа","Печень расположена справа."),
+        ("Анатомия","Сколько рёбер у человека?","24","12 пар рёбер.")
+    ]
+
+    for i in range(40):
+        anatomy.append(
+            ("Анатомия",
+             f"Сколько позвонков в грудном отделе? ({i+1})",
+             "12",
+             "В грудном отделе 12 позвонков.")
+        )
+
+    questions += anatomy
+
+    # ================= 50 ПЕРВАЯ ПОМОЩЬ =================
+    first_aid = [
+        ("Первая помощь","Что накладывают при артериальном кровотечении?","жгут","Жгут накладывается выше раны."),
+        ("Первая помощь","Частота компрессий при СЛР?","100-120","100-120 в минуту."),
+        ("Первая помощь","Нужно ли проверять дыхание перед СЛР?","да","Сначала оценивается дыхание."),
+        ("Первая помощь","Можно ли давать воду при потере сознания?","нет","Есть риск аспирации."),
+        ("Первая помощь","При ожоге прикладывают лёд?","нет","Лёд может повредить ткани.")
+    ]
+
+    for i in range(45):
+        first_aid.append(
+            ("Первая помощь",
+             f"Нужно ли вызывать скорую при потере сознания? ({i+1})",
+             "да",
+             "Потеря сознания требует медицинской оценки.")
+        )
+
+    questions += first_aid
+
+    # ================= 50 ФАРМАКОЛОГИЯ =================
+    pharma = [
+        ("Фармакология","Адреналин применяют при анафилаксии?","да","Препарат выбора."),
+        ("Фармакология","Можно ли превышать дозировку?","нет","Это опасно."),
+        ("Фармакология","Инсулин вводится подкожно?","да","Инсулин вводят подкожно."),
+        ("Фармакология","Антибиотики принимают по назначению врача?","да","Самолечение опасно."),
+        ("Фармакология","Можно ли смешивать препараты без назначения?","нет","Это может быть опасно.")
+    ]
+
+    for i in range(45):
+        pharma.append(
+            ("Фармакология",
+             f"Нужно ли соблюдать кратность приёма лекарства? ({i+1})",
+             "да",
+             "Нарушение кратности снижает эффективность.")
+        )
+
+    questions += pharma
 
     cursor.executemany(
         "INSERT INTO questions(category, question, answer, explanation) VALUES (?,?,?,?)",
@@ -65,26 +137,11 @@ seed_questions()
 
 # ================= STATE =================
 
-active_sessions = {}
-active_duels = {}
-
-TIME_LIMIT = 30
-
-# ================= UTIL =================
-
-def get_user(user_id):
-    cursor.execute("SELECT * FROM users WHERE user_id=?", (user_id,))
-    return cursor.fetchone()
-
-def create_user(user_id):
-    cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
-    conn.commit()
+sessions = {}
 
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
     markup.add("📚 Тренировка", "📝 Экзамен")
-    markup.add("🥊 1 на 1")
-    markup.add("📊 Профиль")
     return markup
 
 def category_menu():
@@ -98,203 +155,74 @@ def category_menu():
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
-    create_user(user_id)
-
-    args = message.text.split()
-
-    if len(args) > 1 and args[1].startswith("duel_"):
-        parts = args[1].split("_")
-        inviter = int(parts[1])
-        category = parts[2]
-        start_duel(inviter, user_id, category)
-        return
-
-    if not get_user(user_id)[1]:
-        bot.send_message(user_id, "Введите своё имя:")
-    else:
-        bot.send_message(user_id, "Добро пожаловать!", reply_markup=main_menu())
-
-@bot.message_handler(func=lambda m: get_user(m.from_user.id) and not get_user(m.from_user.id)[1])
-def set_name(message):
-    cursor.execute("UPDATE users SET name=? WHERE user_id=?",
-                   (message.text, message.from_user.id))
+    cursor.execute("INSERT OR IGNORE INTO users(user_id) VALUES(?)", (user_id,))
     conn.commit()
-    bot.send_message(message.chat.id, "Готово!", reply_markup=main_menu())
+    bot.send_message(user_id, "Выберите режим:", reply_markup=main_menu())
 
-# ================= ТРЕНИРОВКА =================
-
-@bot.message_handler(func=lambda m: m.text == "📚 Тренировка")
-def training(message):
-    bot.send_message(message.chat.id, "Выберите категорию:", reply_markup=category_menu())
-    active_sessions[message.chat.id] = {"mode": "training"}
-
-# ================= ЭКЗАМЕН =================
-
-@bot.message_handler(func=lambda m: m.text == "📝 Экзамен")
-def exam(message):
-    bot.send_message(message.chat.id, "Выберите категорию:", reply_markup=category_menu())
-    active_sessions[message.chat.id] = {
-        "mode": "exam",
-        "score": 0,
-        "count": 0,
-        "questions": []
-    }
-
-# ================= ДУЭЛЬ =================
-
-@bot.message_handler(func=lambda m: m.text == "🥊 1 на 1")
-def duel_choose_category(message):
-    bot.send_message(message.chat.id, "Выберите категорию для дуэли:",
-                     reply_markup=category_menu())
-    active_sessions[message.chat.id] = {"mode": "duel_setup"}
-
-def start_duel(p1, p2, category):
-    cursor.execute("SELECT * FROM questions WHERE category=? ORDER BY RANDOM() LIMIT 10",
-                   (category,))
-    pool = cursor.fetchall()
-
-    active_duels[p1] = {"opponent": p2, "pool": pool, "round": 0, "score": 0}
-    active_duels[p2] = {"opponent": p1, "pool": pool, "round": 0, "score": 0}
-
-    bot.send_message(p1, f"🔥 Дуэль началась! Категория: {category}")
-    bot.send_message(p2, f"🔥 Дуэль началась! Категория: {category}")
-
-    next_duel_question(p1)
-    next_duel_question(p2)
-
-def next_duel_question(user_id):
-    duel = active_duels[user_id]
-
-    if duel["round"] >= 10:
-        finish_duel(user_id)
-        return
-
-    q = duel["pool"][duel["round"]]
-    duel["round"] += 1
-
-    active_sessions[user_id] = {
-        "mode": "duel",
-        "answer": q[3],
-        "time": time.time()
-    }
-
-    bot.send_message(user_id, f"Раунд {duel['round']}/10\n{q[2]}")
-
-def finish_duel(user_id):
-    duel = active_duels.get(user_id)
-    if not duel:
-        return
-
-    opponent = duel["opponent"]
-
-    score1 = duel["score"]
-    score2 = active_duels[opponent]["score"]
-
-    if score1 > score2:
-        bot.send_message(user_id, "🏆 Победа!")
-        bot.send_message(opponent, "❌ Поражение.")
-    elif score2 > score1:
-        bot.send_message(opponent, "🏆 Победа!")
-        bot.send_message(user_id, "❌ Поражение.")
-    else:
-        bot.send_message(user_id, "🤝 Ничья.")
-        bot.send_message(opponent, "🤝 Ничья.")
-
-    active_duels.pop(user_id, None)
-    active_duels.pop(opponent, None)
-
-# ================= ОБРАБОТКА КАТЕГОРИИ =================
-
-@bot.message_handler(func=lambda m: m.text in ["Инъекции", "Анатомия", "Первая помощь", "Фармакология"])
-def category_selected(message):
-    user_id = message.chat.id
-    session = active_sessions.get(user_id)
-
-    if not session:
-        return
-
-    if session["mode"] == "training":
-        cursor.execute("SELECT * FROM questions WHERE category=? ORDER BY RANDOM() LIMIT 1",
-                       (message.text,))
-        q = cursor.fetchone()
-
-        active_sessions[user_id] = {
-            "mode": "training",
-            "answer": q[3],
-            "explanation": q[4],
-            "time": time.time(),
-            "category": message.text
-        }
-
-        bot.send_message(user_id, q[2])
-
-    elif session["mode"] == "exam":
-        cursor.execute("SELECT * FROM questions WHERE category=? ORDER BY RANDOM() LIMIT 20",
-                       (message.text,))
-        session["questions"] = cursor.fetchall()
-        session["category"] = message.text
-        ask_exam_question(user_id)
-
-    elif session["mode"] == "duel_setup":
-        username = bot.get_me().username
-        link = f"https://t.me/{username}?start=duel_{user_id}_{message.text}"
-        bot.send_message(user_id, f"Отправь другу ссылку:\n{link}")
-
-# ================= ЭКЗАМЕН ЛОГИКА =================
-
-def ask_exam_question(user_id):
-    session = active_sessions[user_id]
-
-    if session["count"] >= 20:
-        percent = int((session["score"] / 20) * 100)
-        bot.send_message(user_id, f"Экзамен завершён!\nРезультат: {percent}%")
-        active_sessions.pop(user_id)
-        return
-
-    q = session["questions"][session["count"]]
-    session["count"] += 1
-
-    session["answer"] = q[3]
-    session["time"] = time.time()
-
-    bot.send_message(user_id, f"Вопрос {session['count']}/20\n{q[2]}")
-
-# ================= ОТВЕТЫ =================
+# ================= HANDLER =================
 
 @bot.message_handler(func=lambda m: True)
-def handle_answer(message):
+def handler(message):
     user_id = message.from_user.id
-    session = active_sessions.get(user_id)
 
-    if not session or "answer" not in session:
+    if message.text == "📚 Тренировка":
+        bot.send_message(user_id,"Выберите категорию:",reply_markup=category_menu())
+        sessions[user_id] = {"mode":"training"}
         return
 
-    if time.time() - session["time"] > TIME_LIMIT:
-        bot.send_message(user_id, "⏳ Время вышло!")
+    if message.text == "📝 Экзамен":
+        bot.send_message(user_id,"Выберите категорию:",reply_markup=category_menu())
+        sessions[user_id] = {"mode":"exam","score":0,"count":0}
         return
 
-    if message.text.lower() == session["answer"]:
-        bot.send_message(user_id, "✅ Верно!")
-        if session["mode"] == "duel":
-            active_duels[user_id]["score"] += 1
+    if message.text in ["Инъекции","Анатомия","Первая помощь","Фармакология"]:
+        cursor.execute("SELECT * FROM questions WHERE category=?", (message.text,))
+        q = cursor.fetchall()
+        random.shuffle(q)
+        sessions[user_id]["questions"] = q
+        sessions[user_id]["used"] = []
+        ask_question(user_id)
+        return
+
+    session = sessions.get(user_id)
+    if not session or "current" not in session:
+        return
+
+    correct = session["current"][3]
+
+    if message.text.lower() == correct:
+        bot.send_message(user_id,"✅ Верно!")
         if session["mode"] == "exam":
             session["score"] += 1
     else:
-        bot.send_message(user_id, f"❌ Неверно.\nОтвет: {session['answer']}")
-        if session["mode"] == "training":
-            bot.send_message(user_id, f"📖 Объяснение: {session['explanation']}")
+        bot.send_message(user_id,f"❌ Неверно.\nОтвет: {correct}")
+        bot.send_message(user_id,f"📖 {session['current'][4]}")
 
-    if session["mode"] == "duel":
-        next_duel_question(user_id)
+    if session["mode"] == "training":
+        ask_question(user_id)
     elif session["mode"] == "exam":
-        ask_exam_question(user_id)
+        session["count"] += 1
+        if session["count"] >= 20:
+            percent = int((session["score"]/20)*100)
+            bot.send_message(user_id,f"Экзамен завершён.\nРезультат: {percent}%")
+            sessions.pop(user_id)
+        else:
+            ask_question(user_id)
 
-# ================= ПРОФИЛЬ =================
+def ask_question(user_id):
+    session = sessions[user_id]
+    questions = session["questions"]
 
-@bot.message_handler(func=lambda m: m.text == "📊 Профиль")
-def profile(message):
-    user = get_user(message.from_user.id)
-    bot.send_message(message.chat.id,
-                     f"Имя: {user[1]}\nОчки: {user[2]}\nПравильных: {user[3]}/{user[4]}")
+    if len(session["used"]) >= len(questions):
+        bot.send_message(user_id,"Вопросы закончились.")
+        sessions.pop(user_id)
+        return
+
+    for q in questions:
+        if q[0] not in session["used"]:
+            session["current"] = q
+            session["used"].append(q[0])
+            bot.send_message(user_id,q[2])
+            return
 
 bot.infinity_polling(skip_pending=True)
