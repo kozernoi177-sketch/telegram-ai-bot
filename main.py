@@ -6,126 +6,174 @@ import random
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
+# ===================== ПОЛЬЗОВАТЕЛИ =====================
+
 users = {}
 
-# 🔥 100+ медицинских вопросов
-quiz_questions = []
+# ===================== БАЗА ЗНАНИЙ =====================
 
-base_questions = [
-("Сколько костей у взрослого человека?", "206", "У взрослого человека 206 костей."),
-("Нормальная температура тела?", "36.6", "Средняя норма — 36.6°C."),
-("Сколько камер в сердце?", "4", "В сердце 4 камеры."),
-("Сколько лёгких у человека?", "2", "У человека два лёгких."),
-("Сколько зубов у взрослого человека?", "32", "У взрослого человека 32 зуба."),
-("Самый большой орган человека?", "Кожа", "Кожа — самый большой орган."),
-("Какой орган фильтрует кровь?", "Почки", "Почки очищают кровь."),
-("Где вырабатывается инсулин?", "Поджелудочная железа", "Инсулин вырабатывается в поджелудочной железе."),
-("Главный орган нервной системы?", "Мозг", "Мозг управляет всем организмом."),
-("Сколько литров крови в среднем у человека?", "5", "В среднем около 5 литров крови."),
+knowledge_base = {
+    "сколько органов": "В организме человека примерно 78 органов.",
+    "сколько костей": "У взрослого человека 206 костей.",
+    "нормальная температура": "Нормальная температура тела — около 36.6°C.",
+    "что такое инсульт": "Инсульт — это нарушение кровоснабжения мозга.",
+    "что такое инфаркт": "Инфаркт — это отмирание ткани из-за нехватки кровоснабжения.",
+    "сколько зубов": "У взрослого человека 32 зуба.",
+    "самый большой орган": "Самый большой орган человека — кожа.",
+    "что такое давление": "Артериальное давление — это давление крови на стенки сосудов.",
+}
+
+# ===================== АНАЛИЗ СИМПТОМОВ =====================
+
+symptom_rules = {
+    "головная боль": {"causes": ["стресс", "мигрень"], "risk": 1},
+    "температура": {"causes": ["инфекция", "грипп"], "risk": 2},
+    "кашель": {"causes": ["простуда", "бронхит"], "risk": 2},
+    "боль в груди": {"causes": ["сердечные проблемы"], "risk": 3},
+    "одышка": {"causes": ["астма", "сердечная недостаточность"], "risk": 3},
+    "тошнота": {"causes": ["отравление", "гастрит"], "risk": 1},
+    "слабость": {"causes": ["анемия", "инфекция"], "risk": 1},
+}
+
+# ===================== ВИКТОРИНА =====================
+
+quiz_base = [
+    ("Сколько камер в сердце?", "4"),
+    ("Сколько лёгких у человека?", "2"),
+    ("Какой орган фильтрует кровь?", "Почки"),
+    ("Сколько литров крови у человека?", "5"),
+    ("Главный орган нервной системы?", "Мозг"),
 ]
 
-# создаём 100 вопросов автоматически
-for i in range(10):
-    for q in base_questions:
-        quiz_questions.append({
-            "q": q[0],
-            "a": q[1],
-            "e": q[2]
-        })
+def generate_quiz():
+    questions = []
+    for i in range(20):
+        for q in quiz_base:
+            questions.append(q)
+    return random.sample(questions, len(questions))
+
+# ===================== МЕНЮ =====================
 
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Викторина")
-    markup.add("Профиль")
+    markup.add("🧠 Задать вопрос")
+    markup.add("🩺 Анализ симптомов")
+    markup.add("🎮 Викторина")
+    markup.add("📊 Профиль")
     return markup
+
+# ===================== START =====================
 
 @bot.message_handler(commands=['start'])
 def start(message):
     user_id = message.from_user.id
     users[user_id] = {
         "points": 0,
-        "remaining": random.sample(quiz_questions, len(quiz_questions))
+        "quiz": generate_quiz()
     }
 
     bot.send_message(
         message.chat.id,
-        "🩺 Мега Медицинский Бот\n\nВыберите раздел:",
+        "🩺 Медицинский PRO Бот\n\n"
+        "⚠️ Не заменяет врача.\n"
+        "Выберите раздел:",
         reply_markup=main_menu()
     )
 
-def send_question(chat_id, user_id):
-    if not users[user_id]["remaining"]:
-        users[user_id]["remaining"] = random.sample(quiz_questions, len(quiz_questions))
+# ===================== ПРОФИЛЬ =====================
 
-    question = users[user_id]["remaining"].pop()
-    users[user_id]["current"] = question
-
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Следующий вопрос")
-    markup.add("Назад")
-
-    bot.send_message(chat_id, question["q"], reply_markup=markup)
-
-@bot.message_handler(func=lambda message: message.text == "Викторина")
-def quiz(message):
-    user_id = message.from_user.id
-    if user_id not in users:
-        start(message)
-    send_question(message.chat.id, user_id)
-
-@bot.message_handler(func=lambda message: message.text == "Профиль")
+@bot.message_handler(func=lambda message: message.text == "📊 Профиль")
 def profile(message):
     user_id = message.from_user.id
     points = users.get(user_id, {}).get("points", 0)
-    bot.send_message(message.chat.id, f"🏆 Очки: {points}")
+
+    level = "Студент"
+    if points >= 50:
+        level = "Интерн"
+    if points >= 150:
+        level = "Доктор"
+
+    bot.send_message(
+        message.chat.id,
+        f"🏆 Очки: {points}\n🎓 Уровень: {level}"
+    )
+
+# ===================== ВИКТОРИНА =====================
+
+def send_quiz(chat_id, user_id):
+    if not users[user_id]["quiz"]:
+        users[user_id]["quiz"] = generate_quiz()
+
+    question, answer = users[user_id]["quiz"].pop()
+    users[user_id]["current_answer"] = answer
+    bot.send_message(chat_id, question)
+
+@bot.message_handler(func=lambda message: message.text == "🎮 Викторина")
+def quiz(message):
+    user_id = message.from_user.id
+    send_quiz(message.chat.id, user_id)
+
+# ===================== ОБРАБОТЧИК =====================
 
 @bot.message_handler(func=lambda message: True)
 def handle(message):
     user_id = message.from_user.id
     text = message.text.lower()
 
-    if text == "назад":
-        bot.send_message(message.chat.id, "Главное меню:", reply_markup=main_menu())
-        return
-
-    if text == "следующий вопрос":
-        send_question(message.chat.id, user_id)
-        return
-
-    # Проверка викторины
-    if user_id in users and "current" in users[user_id]:
-        question = users[user_id]["current"]
-        correct = question["a"].lower()
+    # ---- Проверка викторины ----
+    if user_id in users and "current_answer" in users[user_id]:
+        correct = users[user_id]["current_answer"].lower()
 
         if text == correct:
             users[user_id]["points"] += 10
-            bot.send_message(
-                message.chat.id,
-                f"✅ Правильно!\n\n+10 очков\n\n📖 {question['e']}"
-            )
+            bot.send_message(message.chat.id, "✅ Правильно! +10 очков")
         else:
             bot.send_message(
                 message.chat.id,
-                f"❌ Неправильно\n\nПравильный ответ: {question['a']}\n\n📖 {question['e']}"
+                f"❌ Неправильно\nПравильный ответ: {users[user_id]['current_answer']}"
             )
 
-        send_question(message.chat.id, user_id)
+        del users[user_id]["current_answer"]
+        send_quiz(message.chat.id, user_id)
         return
 
-    # 🧠 Ответы на свободные медицинские вопросы
-    medical_knowledge = {
-        "сколько органов у человека": "В организме человека около 78 органов.",
-        "что такое инсульт": "Инсульт — это нарушение кровообращения мозга.",
-        "что такое инфаркт": "Инфаркт — это некроз ткани из-за недостатка кровоснабжения.",
-        "что такое давление": "Артериальное давление — это давление крови на стенки сосудов.",
-        "симптомы гриппа": "Температура, кашель, слабость, боль в мышцах."
-    }
+    # ---- Анализ симптомов ----
+    found = []
+    total_risk = 0
 
-    for key in medical_knowledge:
+    for symptom in symptom_rules:
+        if symptom in text:
+            found.append(symptom)
+            total_risk += symptom_rules[symptom]["risk"]
+
+    if found:
+        risk_level = "НИЗКИЙ"
+        if total_risk >= 4:
+            risk_level = "СРЕДНИЙ"
+        if total_risk >= 6:
+            risk_level = "ВЫСОКИЙ 🚨"
+
+        causes = []
+        for s in found:
+            causes.extend(symptom_rules[s]["causes"])
+
+        bot.send_message(
+            message.chat.id,
+            f"🩺 Обнаружены симптомы: {', '.join(found)}\n\n"
+            f"Возможные причины: {', '.join(set(causes))}\n\n"
+            f"Уровень риска: {risk_level}"
+        )
+        return
+
+    # ---- Поиск ответа в базе ----
+    for key in knowledge_base:
         if key in text:
-            bot.send_message(message.chat.id, medical_knowledge[key])
+            bot.send_message(message.chat.id, knowledge_base[key])
             return
 
-    bot.send_message(message.chat.id, "🤖 Я могу отвечать на медицинские вопросы или проводить викторину.")
+    bot.send_message(
+        message.chat.id,
+        "🤖 Я не нашёл точный ответ.\nПопробуйте переформулировать вопрос."
+    )
 
 bot.infinity_polling(skip_pending=True)
