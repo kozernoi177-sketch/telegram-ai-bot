@@ -17,11 +17,14 @@ def handle_message(message):
                 "Content-Type": "application/json"
             },
             json={
-                "model": "mistralai/mistral-7b-instruct",
+                "model": "openai/gpt-3.5-turbo",
+                "provider": {
+                    "order": ["openai"]
+                },
                 "messages": [
                     {
                         "role": "system",
-                        "content": "Ты Telegram-бот. Отвечай всегда только на русском языке."
+                        "content": "Ты Telegram-бот. Всегда отвечай только на русском языке."
                     },
                     {
                         "role": "user",
