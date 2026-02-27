@@ -117,15 +117,15 @@ def quiz(message):
 
 @bot.message_handler(func=lambda m: m.text == "💉 Инъекции")
 def injection(message):
-    ask_question(message.chat.id, "injection")
-
+    ask_question(message.chat.id, "
 # =======================
-# 1 НА 1
+# 1 НА 1 (БЕЗ ПОВТОРОВ)
 # =======================
 
 @bot.message_handler(func=lambda m: m.text == "🥊 1 на 1")
 def duel_request(message):
     bot.send_message(message.chat.id, "Введите @username соперника:")
+
 
 @bot.message_handler(func=lambda m: m.text.startswith("@"))
 def send_invite(message):
@@ -141,7 +141,9 @@ def send_invite(message):
     pending_invites[opponent_id] = inviter_id
 
     bot.send_message(inviter_id, "Приглашение отправлено.")
-    bot.send_message(opponent_id, f"{users[inviter_id]['name']} вызывает вас на дуэль!\nНапишите: принять")
+    bot.send_message(opponent_id,
+                     f"{users[inviter_id]['name']} вызывает вас на дуэль!\nНапишите: принять")
+
 
 @bot.message_handler(func=lambda m: m.text.lower() == "принять")
 def accept_duel(message):
@@ -155,30 +157,43 @@ def accept_duel(message):
     active_duels[inviter_id] = opponent_id
     active_duels[opponent_id] = inviter_id
 
+    # создаём большую базу для дуэли
+    duel_pool = quiz_questions + injection_questions
+    random.shuffle(duel_pool)
+
+    users[inviter_id]["duel_pool"] = duel_pool[:10]
+    users[opponent_id]["duel_pool"] = duel_pool[:10]
+
     users[inviter_id]["duel_score"] = 0
     users[opponent_id]["duel_score"] = 0
+
     users[inviter_id]["duel_round"] = 0
     users[opponent_id]["duel_round"] = 0
 
-    bot.send_message(inviter_id, "Дуэль началась! 10 раундов.")
-    bot.send_message(opponent_id, "Дуэль началась! 10 раундов.")
+    bot.send_message(inviter_id, "🔥 Дуэль началась! 10 раундов.")
+    bot.send_message(opponent_id, "🔥 Дуэль началась! 10 раундов.")
 
     start_duel_round(inviter_id)
     start_duel_round(opponent_id)
 
+
 def start_duel_round(user_id):
-    if users[user_id]["duel_round"] >= 10:
+    user = users[user_id]
+
+    if user["duel_round"] >= 10:
         finish_duel(user_id)
         return
 
-    question = random.choice(quiz_questions)
+    question = user["duel_pool"][user["duel_round"]]
 
-    users[user_id]["answer"] = question[1]
-    users[user_id]["mode"] = "duel"
-    users[user_id]["question_time"] = time.time()
-    users[user_id]["duel_round"] += 1
+    user["answer"] = question[1]
+    user["mode"] = "duel"
+    user["question_time"] = time.time()
+    user["duel_round"] += 1
 
-    bot.send_message(user_id, f"Раунд {users[user_id]['duel_round']}/10\n{question[0]}")
+    bot.send_message(user_id,
+                     f"Раунд {user['duel_round']}/10\n{question[0]}")
+
 
 def finish_duel(user_id):
     opponent_id = active_duels.get(user_id)
@@ -200,17 +215,6 @@ def finish_duel(user_id):
 
     active_duels.pop(user_id, None)
     active_duels.pop(opponent_id, None)
-
-# =======================
-# СТОП
-# =======================
-
-@bot.message_handler(func=lambda m: m.text == "⛔ Стоп")
-def stop(message):
-    users[message.from_user.id]["mode"] = None
-    users[message.from_user.id]["answer"] = None
-    bot.send_message(message.chat.id, "Режим остановлен.")
-
 # =======================
 # ОТВЕТЫ
 # =======================
