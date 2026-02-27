@@ -1,7 +1,6 @@
 import os
 import telebot
 import requests
-import time
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 OPENROUTER_API_KEY = os.environ.get("OPENROUTER_API_KEY")
@@ -32,16 +31,10 @@ def handle_message(message):
         else:
             answer = f"API Error: {result}"
 
-        bot.reply_to(message, answer)
-
     except Exception as e:
-        bot.reply_to(message, f"Error: {e}")
+        answer = f"Bot crashed: {e}"
 
-print("Bot started...")
+    bot.reply_to(message, answer)
 
-while True:
-    try:
-        bot.infinity_polling(skip_pending=True)
-    except Exception as e:
-        print(f"Polling error: {e}")
-        time.sleep(5)
+print("BOT STARTING...")
+bot.infinity_polling(skip_pending=True)
