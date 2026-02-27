@@ -26,5 +26,4 @@ def handle_message(message):
     result = response.json()
     answer = result["choices"][0]["message"]["content"]
     bot.reply_to(message, answer)
-
 bot.infinity_polling()
