@@ -2,85 +2,57 @@ import os
 import telebot
 from telebot import types
 import random
-from datetime import datetime
+import time
 
 BOT_TOKEN = os.environ.get("BOT_TOKEN")
 bot = telebot.TeleBot(BOT_TOKEN)
 
 users = {}
+duel_queue = []
+active_duels = {}
 
 # ==========================================================
-#                     БАЗА ЗНАНИЙ
+#                 МЕДИЦИНСКИЕ КАРТИНКИ
 # ==========================================================
 
-knowledge_base = {
-    "сколько костей": "У взрослого человека 206 костей.",
-    "сколько органов": "В организме человека около 78 органов.",
-    "что такое инсульт": "Инсульт — нарушение кровоснабжения мозга.",
-    "что такое инфаркт": "Инфаркт — отмирание ткани из-за нехватки крови.",
-}
+medical_images = [
+    "https://upload.wikimedia.org/wikipedia/commons/8/8c/Hand_washing.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/3/3f/Medical_syringe.jpg",
+    "https://upload.wikimedia.org/wikipedia/commons/2/2e/Heart_diagram-en.svg",
+    "https://upload.wikimedia.org/wikipedia/commons/1/19/Human_brain.jpg",
+]
+
+def send_random_image(chat_id):
+    bot.send_photo(chat_id, random.choice(medical_images))
 
 # ==========================================================
-#                    СИМПТОМЫ
-# ==========================================================
-
-symptom_rules = {
-    "головная боль": {"risk": 1},
-    "температура": {"risk": 2},
-    "кашель": {"risk": 2},
-    "боль в груди": {"risk": 3},
-    "одышка": {"risk": 3},
-}
-
-# ==========================================================
-#                    ВИКТОРИНА (200+)
+#                     ВИКТОРИНА
 # ==========================================================
 
 quiz_base = [
-    # Анатомия
     ("Сколько камер в сердце?", "4"),
-    ("Сколько лёгких у человека?", "2"),
-    ("Главный орган нервной системы?", "Мозг"),
-    ("Какой орган фильтрует кровь?", "Почки"),
-]
-
-# добавляем 100+ вопросов по стерильности
-sterility_questions = [
-    ("Является ли стерильность обязательной в хирургии?", "Да"),
     ("Можно ли использовать нестерильные инструменты?", "Нет"),
-    ("Нужно ли мыть руки перед процедурой?", "Да"),
-    ("Предотвращает ли антисептик распространение инфекции?", "Да"),
-    ("Можно ли повторно использовать одноразовый шприц?", "Нет"),
+    ("Сколько лёгких у человека?", "2"),
 ]
-
-for i in range(30):
-    for q in sterility_questions:
-        quiz_base.append(q)
 
 def generate_quiz():
     return random.sample(quiz_base, len(quiz_base))
 
 # ==========================================================
-#               ИНЪЕКЦИИ (для М) 200+
+#                   ИНЪЕКЦИИ
 # ==========================================================
 
 injection_templates = [
-    "Может ли нарушение стерильности привести к осложнениям?",
-    "Является ли контроль состояния пациента важным после процедуры?",
-    "Может ли несоблюдение правил привести к инфекции?",
-    "Является ли медицинская подготовка обязательной для процедуры?",
-    "Может ли появиться покраснение после процедуры?",
-    "Может ли возникнуть аллергическая реакция?",
-    "Может ли неправильная техника вызвать осложнение?",
-    "Нужно ли соблюдать стандарты безопасности?",
+    "Может ли нарушение стерильности привести к инфекции?",
+    "Является ли контроль состояния пациента важным?",
+    "Может ли появиться отёк после процедуры?",
 ]
 
 def generate_injection_questions():
     questions = []
-    for i in range(30):  # 8 × 30 = 240 вопросов
+    for i in range(50):
         for q in injection_templates:
-            answer = random.choice(["да", "нет"])
-            questions.append((q, answer))
+            questions.append((q, random.choice(["да", "нет"])))
     return random.sample(questions, len(questions))
 
 # ==========================================================
@@ -89,11 +61,9 @@ def generate_injection_questions():
 
 def main_menu():
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("🧠 Вопрос")
-    markup.add("🩺 Симптомы")
     markup.add("🎮 Викторина")
-    markup.add("📊 Профиль")
     markup.add("💉 Инъекции (для М)")
+    markup.add("🥊 1 на 1")
     return markup
 
 # ==========================================================
@@ -102,60 +72,44 @@ def main_menu():
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    user_id = message.from_user.id
-    users[user_id] = {
-        "points": 0,
+    users[message.from_user.id] = {
         "quiz": generate_quiz(),
-        "history": [],
-        "injection_correct": 0,
-        "injection_total": 0,
+        "injection_quiz": [],
+        "points": 0
     }
-
-    bot.send_message(
-        message.chat.id,
-        "Медицинский бот.\nВыберите раздел:",
-        reply_markup=main_menu()
-    )
+    bot.send_message(message.chat.id, "Выберите режим:", reply_markup=main_menu())
 
 # ==========================================================
-#                       ПРОФИЛЬ
+#                 ТАЙМЕР ЛОГИКА
 # ==========================================================
 
-@bot.message_handler(func=lambda m: m.text == "📊 Профиль")
-def profile(message):
-    user = users[message.from_user.id]
+def start_timer(user_id):
+    users[user_id]["question_time"] = time.time()
 
-    level = "Студент"
-    if user["points"] >= 50:
-        level = "Интерн"
-    if user["points"] >= 150:
-        level = "Доктор"
-
-    bot.send_message(
-        message.chat.id,
-        f"Очки: {user['points']}\n"
-        f"Уровень: {level}\n"
-        f"Инъекции: {user['injection_correct']} / {user['injection_total']}"
-    )
+def check_timeout(user_id):
+    if "question_time" in users[user_id]:
+        if time.time() - users[user_id]["question_time"] > 30:
+            return True
+    return False
 
 # ==========================================================
-#                     ВИКТОРИНА
+#                   ВИКТОРИНА
 # ==========================================================
 
-def send_quiz(chat_id, user_id):
+@bot.message_handler(func=lambda m: m.text == "🎮 Викторина")
+def start_quiz(message):
+    user_id = message.from_user.id
     if not users[user_id]["quiz"]:
         users[user_id]["quiz"] = generate_quiz()
 
     q, a = users[user_id]["quiz"].pop()
     users[user_id]["current_answer"] = a
-    bot.send_message(chat_id, q)
+    start_timer(user_id)
 
-@bot.message_handler(func=lambda m: m.text == "🎮 Викторина")
-def quiz(message):
-    send_quiz(message.chat.id, message.from_user.id)
+    bot.send_message(message.chat.id, f"⏳ 30 секунд\n{q}")
 
 # ==========================================================
-#                 ИНЪЕКЦИИ (для М)
+#                   ИНЪЕКЦИИ
 # ==========================================================
 
 @bot.message_handler(func=lambda m: m.text == "💉 Инъекции (для М)")
@@ -170,90 +124,35 @@ def send_injection_question(chat_id, user_id):
 
     q, a = users[user_id]["injection_quiz"].pop()
     users[user_id]["current_injection_answer"] = a
-    bot.send_message(chat_id, f"💉 Вопрос:\n{q}\n\nОтветьте: да или нет")
+    start_timer(user_id)
 
-def handle_injection_answer(message):
-    user_id = message.from_user.id
-    text = message.text.lower()
-
-    if "current_injection_answer" in users[user_id]:
-        correct = users[user_id]["current_injection_answer"]
-        users[user_id]["injection_total"] += 1
-
-        if text == correct:
-            users[user_id]["injection_correct"] += 1
-            bot.send_message(message.chat.id, "Умница.")
-        else:
-            bot.send_message(
-                message.chat.id,
-                f"Неправильно.\nПравильный ответ: {correct}"
-            )
-
-        del users[user_id]["current_injection_answer"]
-        send_injection_question(message.chat.id, user_id)
-        return True
-    return False
+    bot.send_message(chat_id, f"💉 ⏳ 30 секунд\n{q}\nОтветьте: да или нет")
 
 # ==========================================================
-#                   ОБЩИЙ ОБРАБОТЧИК
+#                   РЕЖИМ 1 НА 1
 # ==========================================================
 
-@bot.message_handler(func=lambda message: True)
-def handle(message):
-
+@bot.message_handler(func=lambda m: m.text == "🥊 1 на 1")
+def duel_request(message):
     user_id = message.from_user.id
 
-    if handle_injection_answer(message):
-        return
+    if duel_queue:
+        opponent = duel_queue.pop()
+        active_duels[user_id] = opponent
+        active_duels[opponent] = user_id
 
-    text = message.text.lower()
+        bot.send_message(message.chat.id, "Соперник найден! Начинаем дуэль.")
+        bot.send_message(opponent, "Соперник найден! Начинаем дуэль.")
 
-    # Викторина
-    if "current_answer" in users[user_id]:
-        correct = users[user_id]["current_answer"].lower()
+        start_duel_round(user_id)
+        start_duel_round(opponent)
 
-        if text.lower() == correct.lower():
-            users[user_id]["points"] += 10
-            bot.send_message(message.chat.id, "Правильно! +10 очков")
-        else:
-            bot.send_message(
-                message.chat.id,
-                f"Неправильно.\nПравильный ответ: {users[user_id]['current_answer']}"
-            )
+    else:
+        duel_queue.append(user_id)
+        bot.send_message(message.chat.id, "Ожидание соперника...")
 
-        del users[user_id]["current_answer"]
-        send_quiz(message.chat.id, user_id)
-        return
-
-    # Симптомы
-    total_risk = 0
-    found = []
-
-    for s in symptom_rules:
-        if s in text:
-            total_risk += symptom_rules[s]["risk"]
-            found.append(s)
-
-    if found:
-        risk = "НИЗКИЙ"
-        if total_risk >= 4:
-            risk = "СРЕДНИЙ"
-        if total_risk >= 6:
-            risk = "ВЫСОКИЙ"
-
-        bot.send_message(
-            message.chat.id,
-            f"Симптомы: {', '.join(found)}\n"
-            f"Уровень риска: {risk}"
-        )
-        return
-
-    # База знаний
-    for key in knowledge_base:
-        if key in text:
-            bot.send_message(message.chat.id, knowledge_base[key])
-            return
-
-    bot.send_message(message.chat.id, "Попробуйте задать вопрос иначе.")
-
-bot.infinity_polling(skip_pending=True)
+def start_duel_round(user_id):
+    q, a = random.choice(quiz_base)
+    users[user_id]["duel_answer"] = a
+    start_timer(user_id)
+    bot.send_message(user_id, f"
