@@ -1,183 +1,148 @@
-import os
 import telebot
-from telebot import types
-import sqlite3
+import json
+import os
 import random
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
-BOT_TOKEN = os.environ.get("BOT_TOKEN")
-bot = telebot.TeleBot(BOT_TOKEN)
+TOKEN = os.environ.get("BOT_TOKEN")
+bot = telebot.TeleBot(TOKEN)
 
-# ================= DATABASE =================
+# Загружаем вопросы
+with open("questions.json", "r", encoding="utf-8") as f:
+    QUESTIONS = json.load(f)
 
-conn = sqlite3.connect("med_bot.db", check_same_thread=False)
-cursor = conn.cursor()
+user_sessions = {}
 
-cursor.execute("""
-CREATE TABLE IF NOT EXISTS questions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    category TEXT,
-    question TEXT,
-    a TEXT,
-    b TEXT,
-    c TEXT,
-    d TEXT,
-    correct TEXT,
-    explanation TEXT
-)
-""")
-
-conn.commit()
-
-# ================= SEED =================
-
-def seed():
-    cursor.execute("SELECT COUNT(*) FROM questions")
-    if cursor.fetchone()[0] > 0:
-        return
-
-    data = [
-        ("Анатомия","Сколько камер у сердца?","2","3","4","5","C","2 предсердия и 2 желудочка."),
-        ("Анатомия","Сколько костей у взрослого человека?","206","208","210","212","A","У взрослого человека 206 костей."),
-        ("Инъекции","Под каким углом делают внутримышечную инъекцию?","30°","45°","90°","120°","C","Внутримышечно вводят под 90°."),
-        ("Первая помощь","Что делать при артериальном кровотечении?","Жгут","Вода","Массаж","Ничего","A","Жгут накладывают выше раны."),
-        ("Фармакология","Антибиотики действуют против:","Вирусов","Бактерий","Грибов","Аллергии","B","Антибиотики действуют на бактерии.")
-    ]
-
-    cursor.executemany("""
-    INSERT INTO questions(category,question,a,b,c,d,correct,explanation)
-    VALUES (?,?,?,?,?,?,?,?)
-    """, data)
-
-    conn.commit()
-
-seed()
-
-# ================= STATE =================
-
-sessions = {}
-
-# ================= MENUS =================
-
-def main_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("📚 Тренировка", "📝 Экзамен")
-    return markup
-
-def category_menu():
-    markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("Анатомия", "Инъекции")
-    markup.add("Первая помощь", "Фармакология")
-    markup.add("⬅ Назад")
-    return markup
-
-# ================= START =================
+# ===============================
+# СТАРТ
+# ===============================
 
 @bot.message_handler(commands=['start'])
 def start(message):
-    sessions.pop(message.chat.id, None)
-    bot.send_message(message.chat.id, "Выберите режим:", reply_markup=main_menu())
-
-@bot.message_handler(func=lambda m: m.text == "⬅ Назад")
-def back(message):
-    sessions.pop(message.chat.id, None)
-    bot.send_message(message.chat.id, "Выберите режим:", reply_markup=main_menu())
-
-# ================= MODE =================
-
-@bot.message_handler(func=lambda m: m.text == "📚 Тренировка")
-def training(message):
-    sessions[message.chat.id] = {"mode": "training"}
-    bot.send_message(message.chat.id, "Выберите категорию:", reply_markup=category_menu())
-
-@bot.message_handler(func=lambda m: m.text == "📝 Экзамен")
-def exam(message):
-    sessions[message.chat.id] = {"mode": "exam", "score": 0, "count": 0}
-    bot.send_message(message.chat.id, "Выберите категорию:", reply_markup=category_menu())
-
-# ================= CATEGORY =================
-
-@bot.message_handler(func=lambda m: m.text in ["Анатомия","Инъекции","Первая помощь","Фармакология"])
-def category(message):
-    user_id = message.chat.id
-    session = sessions.get(user_id)
-    if not session:
-        return
-
-    cursor.execute("SELECT * FROM questions WHERE category=?", (message.text,))
-    questions = cursor.fetchall()
-
-    if not questions:
-        bot.send_message(user_id, "Нет вопросов.")
-        return
-
-    random.shuffle(questions)
-
-    session["questions"] = questions[:10] if session["mode"] == "exam" else questions
-    session["category"] = message.text
-    session["count"] = 0
-
-    ask_question(user_id)
-
-# ================= ASK QUESTION =================
-
-def ask_question(user_id):
-    session = sessions[user_id]
-
-    if session["mode"] == "exam" and session["count"] >= 10:
-        percent = int((session["score"] / 10) * 100)
-        bot.send_message(user_id, f"Экзамен завершён.\nРезультат: {percent}%")
-        sessions.pop(user_id)
-        return
-
-    q = session["questions"][session["count"]]
-    session["current"] = q
-    session["answered"] = False
-
-    markup = types.InlineKeyboardMarkup()
-    markup.row(
-        types.InlineKeyboardButton("A", callback_data="A"),
-        types.InlineKeyboardButton("B", callback_data="B"),
-        types.InlineKeyboardButton("C", callback_data="C"),
-        types.InlineKeyboardButton("D", callback_data="D")
+    markup = InlineKeyboardMarkup()
+    markup.add(
+        InlineKeyboardButton("Анатомия", callback_data="cat_Анатомия"),
+        InlineKeyboardButton("Инъекции", callback_data="cat_Инъекции")
+    )
+    markup.add(
+        InlineKeyboardButton("Первая помощь", callback_data="cat_Первая помощь"),
+        InlineKeyboardButton("Фармакология", callback_data="cat_Фармакология")
     )
 
     bot.send_message(
-        user_id,
-        f"{q[2]}\n\nA) {q[3]}\nB) {q[4]}\nC) {q[5]}\nD) {q[6]}",
+        message.chat.id,
+        "Выбери раздел для экзамена:",
         reply_markup=markup
     )
 
-# ================= ANSWER =================
+# ===============================
+# ВЫБОР КАТЕГОРИИ
+# ===============================
 
-@bot.callback_query_handler(func=lambda call: True)
-def answer(call):
+@bot.callback_query_handler(func=lambda call: call.data.startswith("cat_"))
+def choose_category(call):
+    category = call.data.replace("cat_", "")
     user_id = call.message.chat.id
-    session = sessions.get(user_id)
 
-    if not session or session.get("answered"):
+    if category not in QUESTIONS:
+        bot.answer_callback_query(call.id, "Ошибка категории")
         return
 
-    session["answered"] = True
+    questions = QUESTIONS[category]
 
+    if len(questions) < 20:
+        bot.send_message(user_id, "В разделе меньше 20 вопросов.")
+        return
+
+    selected = random.sample(questions, 20)
+
+    user_sessions[user_id] = {
+        "category": category,
+        "questions": selected,
+        "current": 0,
+        "score": 0
+    }
+
+    bot.edit_message_reply_markup(user_id, call.message.message_id, reply_markup=None)
+    send_next_question(user_id)
+
+# ===============================
+# СЛЕДУЮЩИЙ ВОПРОС
+# ===============================
+
+def send_next_question(user_id):
+    session = user_sessions[user_id]
+    index = session["current"]
+
+    if index >= 20:
+        finish_exam(user_id)
+        return
+
+    q = session["questions"][index]
+
+    text = f"Вопрос {index+1}/20\n\n{q['question']}"
+
+    markup = InlineKeyboardMarkup()
+
+    for i, option in enumerate(q["options"]):
+        markup.add(
+            InlineKeyboardButton(option, callback_data=f"answer_{i}")
+        )
+
+    bot.send_message(user_id, text, reply_markup=markup)
+
+# ===============================
+# ОБРАБОТКА ОТВЕТА
+# ===============================
+
+@bot.callback_query_handler(func=lambda call: call.data.startswith("answer_"))
+def handle_answer(call):
+    user_id = call.message.chat.id
+
+    if user_id not in user_sessions:
+        return
+
+    session = user_sessions[user_id]
+    index = session["current"]
+    q = session["questions"][index]
+
+    selected = int(call.data.split("_")[1])
+    correct = q["correct"]
+
+    # Убираем кнопки (чтобы нельзя было нажимать снова)
     bot.edit_message_reply_markup(
         chat_id=user_id,
         message_id=call.message.message_id,
         reply_markup=None
     )
 
-    correct = session["current"][7]
-
-    if call.data == correct:
+    if selected == correct:
+        session["score"] += 1
         bot.send_message(user_id, "✅ Верно!")
-        if session["mode"] == "exam":
-            session["score"] += 1
     else:
-        bot.send_message(user_id, f"❌ Неверно.\nПравильный ответ: {correct}")
+        correct_text = q["options"][correct]
+        bot.send_message(user_id, f"❌ Неверно.\nПравильный ответ: {correct_text}")
 
-    bot.send_message(user_id, f"📖 {session['current'][8]}")
+    session["current"] += 1
+    send_next_question(user_id)
 
-    session["count"] += 1
-    ask_question(user_id)
+# ===============================
+# ЗАВЕРШЕНИЕ
+# ===============================
 
-print("BOT STARTED")
-bot.infinity_polling(skip_pending=True)
+def finish_exam(user_id):
+    session = user_sessions[user_id]
+    score = session["score"]
+
+    bot.send_message(
+        user_id,
+        f"Экзамен завершён!\n\nРезультат: {score}/20"
+    )
+
+    del user_sessions[user_id]
+
+# ===============================
+# ЗАПУСК
+# ===============================
+
+bot.polling(none_stop=True)
